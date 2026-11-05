@@ -423,7 +423,7 @@ export function ScheduleApp({
   const canUseAdmin = data.canUseAdmin;
   const canUseDirection = data.canUseDirection;
   const teacherMode = data.teacherMode;
-  const showClerkControls = process.env.NODE_ENV === "production" && !preview;
+  const showClerkControls = !preview;
   const approvedCount = data.teachers.filter(
     (teacher) => teacher.status === "aprobado",
   ).length;
@@ -483,26 +483,46 @@ export function ScheduleApp({
       toast.error("El periodo académico está cerrado.");
       return;
     }
-    const key = slotKey(day, hour);
+
+    const hourIndex = hours.indexOf(hour);
+    // Criterio: Si no alcanza para un bloque de 4 hacia abajo, se omite silenciosamente sin alertas
+    if (hourIndex === -1 || hourIndex + 4 > hours.length) {
+      return;
+    }
+
+    // Obtenemos la celda seleccionada + las 3 siguientes hacia abajo (1 + 3 = 4)
+    const blockHours = hours.slice(hourIndex, hourIndex + 4);
+    const blockKeys = blockHours.map((h) => slotKey(day, h));
+
     const previous = data;
     let availability: string[] | null = null;
+
     updateTeacherInData(profile.id, (teacher) => {
       const next = new Set(teacher.availability);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
+      // Si todas las celdas del bloque ya están seleccionadas, se desmarcan; caso contrario, se marcan las 4
+      const allSelected = blockKeys.every((key) => next.has(key));
+
+      for (const key of blockKeys) {
+        if (allSelected) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
       }
+
       availability = Array.from(next).sort();
       return { ...teacher, availability, status: "borrador" };
     });
+
     if (!availability) {
       return;
     }
+
     const nextAvailability = availability;
     const mutationId = availabilityMutationRef.current + 1;
     availabilityMutationRef.current = mutationId;
     setAvailabilitySaving(true);
+
     request(
       { action: "setAvailability", availability: nextAvailability },
       { commitPayload: false, showSaving: false },
@@ -4098,48 +4118,57 @@ function ScheduleBoard({
               </div>
             ))}
           </div>
+          {/* Celdas de seleccion de horarios */}
           <div className="grid min-h-0 flex-1 grid-rows-[repeat(14,minmax(0,1fr))]">
-            {hours.map((hour) => (
-              <div
-                className="grid min-h-0 grid-cols-[92px_repeat(6,minmax(94px,1fr))] border-b last:border-b-0"
-                key={hour}
-              >
-                <div className="flex items-center justify-center border-r bg-muted/55 px-1.5 text-center font-medium text-[11px] tabular-nums leading-tight">
-                  {formatHour(hour)}
+            {hours.map((hour, hourIndex) => {
+              const canStartBlock = hourIndex + 4 <= hours.length;
+
+              return (
+                <div
+                  className="grid min-h-0 grid-cols-[92px_repeat(6,minmax(94px,1fr))] border-b last:border-b-0"
+                  key={hour}
+                >
+                  <div className="flex items-center justify-center border-r bg-muted/55 px-1.5 text-center font-medium text-[11px] tabular-nums leading-tight">
+                    {formatHour(hour)}
+                  </div>
+                  {days.map((day) => {
+                    const key = slotKey(day.key, hour);
+                    const isSelected = selected.has(key);
+                    const isClickable = interactive && canStartBlock;
+                    const Cell = isClickable ? "button" : "div";
+                    const label = `${day.label} ${formatHour(hour)}: ${
+                      isSelected ? "disponible" : "sin marcar"
+                    }`;
+
+                    return (
+                      <Cell
+                        aria-label={interactive ? label : undefined}
+                        aria-pressed={interactive ? isSelected : undefined}
+                        className={cn(
+                          "flex min-h-0 items-center justify-center border-r text-xs transition-colors last:border-r-0",
+                          isSelected
+                            ? "bg-availability text-white"
+                            : isClickable
+                              ? "bg-card hover:bg-availability-muted"
+                              : "bg-muted/10 cursor-not-allowed",
+                          isClickable &&
+                            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        )}
+                        key={key}
+                        onClick={
+                          isClickable
+                            ? () => onToggleSlot?.(day.key, hour)
+                            : undefined
+                        }
+                        type={isClickable ? "button" : undefined}
+                      >
+                        {isSelected ? <Check className="size-4" /> : null}
+                      </Cell>
+                    );
+                  })}
                 </div>
-                {days.map((day) => {
-                  const key = slotKey(day.key, hour);
-                  const isSelected = selected.has(key);
-                  const Cell = interactive ? "button" : "div";
-                  const label = `${day.label} ${formatHour(hour)}: ${
-                    isSelected ? "disponible" : "sin marcar"
-                  }`;
-                  return (
-                    <Cell
-                      aria-label={interactive ? label : undefined}
-                      aria-pressed={interactive ? isSelected : undefined}
-                      className={cn(
-                        "flex min-h-0 items-center justify-center border-r text-xs transition-colors last:border-r-0",
-                        isSelected
-                          ? "bg-availability text-white"
-                          : "bg-card hover:bg-availability-muted",
-                        interactive &&
-                          "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      )}
-                      key={key}
-                      onClick={
-                        interactive
-                          ? () => onToggleSlot?.(day.key, hour)
-                          : undefined
-                      }
-                      type={interactive ? "button" : undefined}
-                    >
-                      {isSelected ? <Check className="size-4" /> : null}
-                    </Cell>
-                  );
-                })}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

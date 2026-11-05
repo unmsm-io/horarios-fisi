@@ -23,6 +23,11 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
 ]);
 
+const isDev =
+  (process.env.NODE_ENV as string) === "dev" ||
+  process.env.NODE_ENV === "development" ||
+  process.env.NODE_ENV !== "production";
+
 const clerkProxy = clerkMiddleware(
   async (auth, request) => {
     if (
@@ -30,6 +35,9 @@ const clerkProxy = clerkMiddleware(
       isHealthRoute(request) ||
       isWebhookRoute(request)
     ) {
+      return NextResponse.next();
+    }
+    if (isDev && isDevelopmentBypassRoute(request)) {
       return NextResponse.next();
     }
     if (!isPublicRoute(request)) {
@@ -42,17 +50,12 @@ const clerkProxy = clerkMiddleware(
     frontendApiProxy: {
       enabled: true,
     },
+    clockSkewInMs: 300000,
   },
 );
 
 export default function proxy(request: NextRequest, event: NextFetchEvent) {
   if (isDemoRoute(request)) {
-    return NextResponse.next();
-  }
-  if (
-    process.env.NODE_ENV !== "production" &&
-    isDevelopmentBypassRoute(request)
-  ) {
     return NextResponse.next();
   }
   return clerkProxy(request, event);

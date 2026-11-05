@@ -31,10 +31,7 @@ export function AppProviders({
 
   if (
     pathname?.startsWith("/demo") ||
-    (process.env.NODE_ENV !== "production" &&
-      (pathname?.startsWith("/teacher") ||
-        pathname?.startsWith("/direction") ||
-        pathname?.startsWith("/onboarding")))
+    !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   ) {
     return content;
   }

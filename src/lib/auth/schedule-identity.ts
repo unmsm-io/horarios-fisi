@@ -10,7 +10,12 @@ export async function resolveScheduleIdentity({
 }: {
   preview?: boolean;
 } = {}): Promise<ScheduleIdentity | null> {
-  if (process.env.NODE_ENV !== "production" && preview) {
+  const isDev =
+    (process.env.NODE_ENV as string) === "dev" ||
+    process.env.NODE_ENV === "development" ||
+    process.env.NODE_ENV !== "production";
+
+  if (isDev && preview) {
     return localPreviewIdentity();
   }
   try {
@@ -30,11 +35,11 @@ export async function resolveScheduleIdentity({
       };
     }
   } catch {
-    if (process.env.NODE_ENV === "production") {
+    if (!isDev) {
       return null;
     }
   }
-  if (process.env.NODE_ENV !== "production") {
+  if (isDev) {
     return localPreviewIdentity();
   }
   return null;

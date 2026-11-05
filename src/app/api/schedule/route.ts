@@ -36,8 +36,10 @@ export async function PATCH(request: NextRequest) {
 async function resolveIdentity(
   request: NextRequest,
 ): Promise<ScheduleIdentity | null> {
-  const preview =
-    process.env.NODE_ENV !== "production" &&
-    request.nextUrl.searchParams.get("preview") === "1";
+  const isDev =
+    (process.env.NODE_ENV as string) === "dev" ||
+    process.env.NODE_ENV === "development" ||
+    process.env.NODE_ENV !== "production";
+  const preview = isDev && request.nextUrl.searchParams.get("preview") === "1";
   return resolveScheduleIdentity({ preview });
 }
