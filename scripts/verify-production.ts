@@ -56,9 +56,9 @@ const minActiveCourses = readNumberArg("--min-active-courses", 1);
 
 const envChecks: Check[] = [
   hasEnv("DATABASE_URL", isPostgresUrl),
-  hasEnv("CLERK_SECRET_KEY"),
-  hasEnv("CLERK_WEBHOOK_SIGNING_SECRET"),
-  hasEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"),
+  hasEnv("AUTH_SERVICE_URL"),
+  hasEnv("AUTH_SYSTEM_CODE"),
+  hasEnv("AUTH_SESSION_SECRET"),
 ];
 
 const publicChecks = await verifyPublicRoutes(baseUrl);
@@ -267,7 +267,7 @@ async function readCounts(): Promise<Counts> {
       (select count(*)::int from app_users where role = 'admin') as admin_users,
       (select count(*)::int from app_users where role = 'direccion') as direction_users,
       (select count(*)::int from teacher_profiles) as teacher_profiles,
-      (select count(*)::int from teacher_profiles where clerk_user_id is not null) as linked_teachers,
+      (select count(*)::int from teacher_profiles where ldap_uid is not null) as linked_teachers,
       (select count(*)::int from courses where active = true) as active_courses,
       (select count(*)::int from courses where active = false) as inactive_courses,
       (select count(*)::int from teacher_courses) as teacher_courses,

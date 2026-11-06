@@ -88,15 +88,15 @@ async function insertCourse(
 // ensureUser() internally (e.g. setContract, setAvailability, submitSchedule).
 // ---------------------------------------------------------------------------
 async function insertUser(
-  clerkUserId: string,
+  ldapUid: string,
   email: string,
   role: AppRole = "docente",
 ) {
   await sql.query(
-    `insert into app_users (clerk_user_id, email, name, image_url, role, school, code, last_seen_at)
+    `insert into app_users (ldap_uid, email, name, image_url, role, school, code, last_seen_at)
      values ($1, $2, $3, '', $4, 'Ing. de Sistemas', '', now())
-     on conflict (clerk_user_id) do nothing`,
-    [clerkUserId, email, clerkUserId, role],
+     on conflict (ldap_uid) do nothing`,
+    [ldapUid, email, ldapUid, role],
   );
 }
 
@@ -171,31 +171,31 @@ describeDb("schedule-db (DB-backed characterization)", () => {
 
   it("syncClerkUser creates an app_users row", async () => {
     await syncClerkUser({
-      clerkUserId: "clerk-abc",
+      ldapUid: "clerk-abc",
       email: "docente1@unmsm.edu.pe",
       name: "Docente Uno",
     });
     const rows = (await sql.query(
-      "select clerk_user_id, email from app_users where clerk_user_id = $1",
+      "select ldap_uid, email from app_users where ldap_uid = $1",
       ["clerk-abc"],
-    )) as { clerk_user_id: string; email: string }[];
+    )) as { ldap_uid: string; email: string }[];
     expect(rows.length).toBe(1);
     expect(rows[0].email).toBe("docente1@unmsm.edu.pe");
   });
 
   it("syncClerkUser called twice does not duplicate the row", async () => {
     await syncClerkUser({
-      clerkUserId: "clerk-abc",
+      ldapUid: "clerk-abc",
       email: "docente1@unmsm.edu.pe",
       name: "Docente Uno",
     });
     await syncClerkUser({
-      clerkUserId: "clerk-abc",
+      ldapUid: "clerk-abc",
       email: "docente1@unmsm.edu.pe",
       name: "Docente Uno Updated",
     });
     const rows = (await sql.query(
-      "select count(*)::int as count from app_users where clerk_user_id = $1",
+      "select count(*)::int as count from app_users where ldap_uid = $1",
       ["clerk-abc"],
     )) as { count: number }[];
     expect(Number(rows[0].count)).toBe(1);
@@ -203,14 +203,14 @@ describeDb("schedule-db (DB-backed characterization)", () => {
 
   it("deleteClerkUser called twice does not throw", async () => {
     await syncClerkUser({
-      clerkUserId: "clerk-abc",
+      ldapUid: "clerk-abc",
       email: "docente1@unmsm.edu.pe",
       name: "Docente Uno",
     });
     await deleteClerkUser("clerk-abc");
     await deleteClerkUser("clerk-abc"); // should be silent no-op
     const rows = (await sql.query(
-      "select count(*)::int as count from app_users where clerk_user_id = $1",
+      "select count(*)::int as count from app_users where ldap_uid = $1",
       ["clerk-abc"],
     )) as { count: number }[];
     expect(Number(rows[0].count)).toBe(0);
@@ -229,10 +229,10 @@ describeDb("schedule-db (DB-backed characterization)", () => {
     });
     // Link teacher to user via email so getWritableTeacherWorkspace finds the
     // official profile.
-    await sql.query(
-      "update teacher_profiles set clerk_user_id = $1 where id = $2",
-      ["u-contract-test", teacherId],
-    );
+    await sql.query("update teacher_profiles set ldap_uid = $1 where id = $2", [
+      "u-contract-test",
+      teacherId,
+    ]);
     const identity = makeIdentity({
       clerkUserId: "u-contract-test",
       email: `${teacherId}@unmsm.edu.pe`,
@@ -252,10 +252,10 @@ describeDb("schedule-db (DB-backed characterization)", () => {
       email: `${teacherId}@unmsm.edu.pe`,
       status: "enviado",
     });
-    await sql.query(
-      "update teacher_profiles set clerk_user_id = $1 where id = $2",
-      ["u-avail-test", teacherId],
-    );
+    await sql.query("update teacher_profiles set ldap_uid = $1 where id = $2", [
+      "u-avail-test",
+      teacherId,
+    ]);
     const identity = makeIdentity({
       clerkUserId: "u-avail-test",
       email: `${teacherId}@unmsm.edu.pe`,
@@ -272,10 +272,10 @@ describeDb("schedule-db (DB-backed characterization)", () => {
     const teacherId = "t-submit-fail";
     await insertUser("u-submit-fail", `${teacherId}@unmsm.edu.pe`, "docente");
     await insertTeacher(teacherId, { email: `${teacherId}@unmsm.edu.pe` });
-    await sql.query(
-      "update teacher_profiles set clerk_user_id = $1 where id = $2",
-      ["u-submit-fail", teacherId],
-    );
+    await sql.query("update teacher_profiles set ldap_uid = $1 where id = $2", [
+      "u-submit-fail",
+      teacherId,
+    ]);
     const identity = makeIdentity({
       clerkUserId: "u-submit-fail",
       email: `${teacherId}@unmsm.edu.pe`,
@@ -298,10 +298,10 @@ describeDb("schedule-db (DB-backed characterization)", () => {
       contract: "partial10",
       status: "borrador",
     });
-    await sql.query(
-      "update teacher_profiles set clerk_user_id = $1 where id = $2",
-      ["u-happy-path", teacherId],
-    );
+    await sql.query("update teacher_profiles set ldap_uid = $1 where id = $2", [
+      "u-happy-path",
+      teacherId,
+    ]);
     const identity = makeIdentity({
       clerkUserId: "u-happy-path",
       email: userEmail,
@@ -335,7 +335,7 @@ describeDb("schedule-db (DB-backed characterization)", () => {
       status: "borrador",
     });
     await sql.query(
-      "update teacher_profiles set clerk_user_id = $1, department = $3 where id = $2",
+      "update teacher_profiles set ldap_uid = $1, department = $3 where id = $2",
       ["u-approve-docente", teacherId, "Ing. de Sistemas"],
     );
     const teacherIdentity = makeIdentity({
@@ -375,10 +375,10 @@ describeDb("schedule-db (DB-backed characterization)", () => {
       status: "borrador",
       department: "Ing. de Sistemas",
     });
-    await sql.query(
-      "update teacher_profiles set clerk_user_id = $1 where id = $2",
-      ["u-borrador-docente", teacherId],
-    );
+    await sql.query("update teacher_profiles set ldap_uid = $1 where id = $2", [
+      "u-borrador-docente",
+      teacherId,
+    ]);
     const directorIdentity = makeIdentity({
       clerkUserId: directorId,
       email: "director-borrador@unmsm.edu.pe",
@@ -403,7 +403,7 @@ describeDb("schedule-db (DB-backed characterization)", () => {
       department: "Ing. de Sistemas",
     });
     await sql.query(
-      "update teacher_profiles set clerk_user_id = $1, department = $3 where id = $2",
+      "update teacher_profiles set ldap_uid = $1, department = $3 where id = $2",
       ["u-repeat-docente", teacherId, "Ing. de Sistemas"],
     );
     const teacherIdentity = makeIdentity({
@@ -441,10 +441,10 @@ describeDb("schedule-db (DB-backed characterization)", () => {
       contract: "partial10",
       status: "borrador",
     });
-    await sql.query(
-      "update teacher_profiles set clerk_user_id = $1 where id = $2",
-      ["u-limit", teacherId],
-    );
+    await sql.query("update teacher_profiles set ldap_uid = $1 where id = $2", [
+      "u-limit",
+      teacherId,
+    ]);
     const identity = makeIdentity({ clerkUserId: "u-limit", email: userEmail });
     // Fill up to maxCourses
     await addCourse(identity, "c-limit-a");
@@ -469,10 +469,10 @@ describeDb("schedule-db (DB-backed characterization)", () => {
       contract: "full",
       status: "borrador",
     });
-    await sql.query(
-      "update teacher_profiles set clerk_user_id = $1 where id = $2",
-      ["u-dup-course", teacherId],
-    );
+    await sql.query("update teacher_profiles set ldap_uid = $1 where id = $2", [
+      "u-dup-course",
+      teacherId,
+    ]);
     const identity = makeIdentity({
       clerkUserId: "u-dup-course",
       email: userEmail,
@@ -498,10 +498,10 @@ describeDb("schedule-db (DB-backed characterization)", () => {
       contract: "partial10",
       status: "borrador",
     });
-    await sql.query(
-      "update teacher_profiles set clerk_user_id = $1 where id = $2",
-      ["u-period-gate", teacherId],
-    );
+    await sql.query("update teacher_profiles set ldap_uid = $1 where id = $2", [
+      "u-period-gate",
+      teacherId,
+    ]);
     // Force period closed directly (bypass the business-rule check in
     // setPeriodClosed that requires all teachers to be approved first).
     await sql.query(
@@ -536,10 +536,10 @@ describeDb("schedule-db (DB-backed characterization)", () => {
     const userEmail = `${teacherId}@unmsm.edu.pe`;
     await insertUser("u-payload-docente", userEmail, "docente");
     await insertTeacher(teacherId, { email: userEmail, contract: "partial10" });
-    await sql.query(
-      "update teacher_profiles set clerk_user_id = $1 where id = $2",
-      ["u-payload-docente", teacherId],
-    );
+    await sql.query("update teacher_profiles set ldap_uid = $1 where id = $2", [
+      "u-payload-docente",
+      teacherId,
+    ]);
     const identity = makeIdentity({
       clerkUserId: "u-payload-docente",
       email: userEmail,

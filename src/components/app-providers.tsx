@@ -1,21 +1,12 @@
 "use client";
 
-import { ClerkProvider } from "@clerk/nextjs";
-import { usePathname } from "next/navigation";
 import { ThemeProvider } from "next-themes";
 import type React from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-export function AppProviders({
-  children,
-  clerkProxyUrl,
-}: {
-  children: React.ReactNode;
-  clerkProxyUrl?: string;
-}) {
-  const pathname = usePathname();
-  const content = (
+export function AppProviders({ children }: { children: React.ReactNode }) {
+  return (
     <ThemeProvider
       attribute="class"
       defaultTheme="system"
@@ -28,13 +19,4 @@ export function AppProviders({
       </TooltipProvider>
     </ThemeProvider>
   );
-
-  if (
-    pathname?.startsWith("/demo") ||
-    !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  ) {
-    return content;
-  }
-
-  return <ClerkProvider proxyUrl={clerkProxyUrl}>{content}</ClerkProvider>;
 }

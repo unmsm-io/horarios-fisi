@@ -1,4 +1,3 @@
-import { clerkClient } from "@clerk/nextjs/server";
 import type {
   ScheduleActionData,
   ScheduleActionRunResult,
@@ -24,7 +23,7 @@ import {
   validateUserAccessChange,
 } from "@/lib/data/schedule-db";
 import { type ContractKey, contractRules } from "@/lib/domain/schedule-data";
-import type { AppRole, ScheduleIdentity } from "@/lib/domain/types";
+import type { ScheduleIdentity } from "@/lib/domain/types";
 import { ScheduleError } from "@/lib/domain/types";
 
 export async function runScheduleAction(
@@ -152,7 +151,6 @@ async function runAction(
         body.role,
         body.school,
       );
-      await updateClerkRole(body.userId, body.role);
     }
     return setUserAccess(identity, body.userId, body.role, body.school);
   }
@@ -177,15 +175,4 @@ async function runAction(
 
 function isContractKey(value: unknown): value is ContractKey {
   return typeof value === "string" && value in contractRules;
-}
-
-async function updateClerkRole(userId: string, role: AppRole) {
-  try {
-    const client = await clerkClient();
-    await client.users.updateUserMetadata(userId, {
-      publicMetadata: { role },
-    });
-  } catch {
-    throw new ScheduleError("No se pudo actualizar el rol en Clerk.", 502);
-  }
 }

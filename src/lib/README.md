@@ -5,7 +5,7 @@
 | `domain/` | Domain | Pure types and logic; no Next.js, no DB, no auth |
 | `data/` | Data | DB access via Neon; imports from `domain/` only |
 | `api/` | API | Action runners and type unions; imports from `domain/` and `data/` |
-| `auth/` | Auth | Clerk identity resolution; imports from `domain/` only |
+| `auth/` | Auth | Institutional LDAP microservice client and BFF session; imports from `domain/` and `data/` |
 
 Import rule: `front -> api -> domain <- data`. Domain imports nothing from `next/`, `data/`, or `api/`.
 

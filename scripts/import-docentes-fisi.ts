@@ -87,8 +87,8 @@ const syncedUsers = (await sql.query(`
   from teacher_profiles tp
   where lower(au.email) = lower(tp.email)
     and tp.department is not null
-  returning au.clerk_user_id
-`)) as { clerk_user_id: string }[];
+  returning au.ldap_uid
+`)) as { ldap_uid: string }[];
 
 const directionScopes = (await sql.query(`
   update app_users

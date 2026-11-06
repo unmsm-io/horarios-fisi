@@ -1,9 +1,16 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
-import type { AppRole, ScheduleIdentity } from "@/lib/domain/types";
+import { cookies } from "next/headers";
+import { refreshInstitutionalTokens } from "@/lib/auth/auth-service-client";
+import { isAppRole } from "@/lib/auth/roles";
+import {
+  getSessionCookieOptions,
+  isTokenExpiringSoon,
+  SESSION_COOKIE_NAME,
+  sealSession,
+  unsealSession,
+} from "@/lib/auth/session";
+import type { ScheduleIdentity } from "@/lib/domain/types";
 
-export function isAppRole(value: unknown): value is AppRole {
-  return value === "docente" || value === "direccion" || value === "admin";
-}
+export { isAppRole };
 
 export async function resolveScheduleIdentity({
   preview = false,
@@ -18,35 +25,71 @@ export async function resolveScheduleIdentity({
   if (isDev && preview) {
     return localPreviewIdentity();
   }
+
   try {
-    const { userId } = await auth();
-    if (userId) {
-      const user = await currentUser();
-      const role = isAppRole(user?.publicMetadata?.role)
-        ? user.publicMetadata.role
-        : undefined;
-      return {
-        clerkUserId: userId,
-        email:
-          user?.primaryEmailAddress?.emailAddress ?? `${userId}@unmsm.edu.pe`,
-        imageUrl: user?.imageUrl,
-        name: user?.fullName ?? user?.firstName ?? "Docente UNMSM",
-        role,
-      };
+    const cookieStore = await cookies();
+    const rawSession = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+    if (rawSession) {
+      const session = await unsealSession(rawSession);
+      if (session) {
+        // Proactive silent refresh if expiring within 120 seconds
+        if (isTokenExpiringSoon(session.expiresAt) && session.refreshToken) {
+          try {
+            const refreshData = await refreshInstitutionalTokens({
+              refreshToken: session.refreshToken,
+            });
+            session.accessToken = refreshData.accessToken;
+            session.refreshToken =
+              refreshData.refreshToken || session.refreshToken;
+            session.expiresAt =
+              Math.floor(Date.now() / 1000) + (refreshData.expiresIn || 900);
+            const sealedToken = await sealSession(session);
+            try {
+              cookieStore.set(
+                SESSION_COOKIE_NAME,
+                sealedToken,
+                getSessionCookieOptions(),
+              );
+            } catch {
+              // Setting cookies might be restricted in pure Server Components (read-only);
+              // Server Actions or Route Handlers will persist it.
+            }
+          } catch {
+            // If refresh fails, check if the access token has completely expired
+            if (session.expiresAt < Math.floor(Date.now() / 1000)) {
+              if (isDev) return localPreviewIdentity();
+              return null;
+            }
+          }
+        }
+
+        return {
+          ldapUid: session.user.ldapUid,
+          clerkUserId: session.user.ldapUid,
+          email: session.user.email,
+          name: session.user.name,
+          role: session.user.role,
+          institutionalRoles: session.user.institutionalRoles,
+          preview: false,
+        };
+      }
     }
   } catch {
     if (!isDev) {
       return null;
     }
   }
+
   if (isDev) {
     return localPreviewIdentity();
   }
+
   return null;
 }
 
-function localPreviewIdentity(): ScheduleIdentity {
+export function localPreviewIdentity(): ScheduleIdentity {
   return {
+    ldapUid: "local-preview",
     clerkUserId: "local-preview",
     email: "preview@unmsm.edu.pe",
     name: "Vista local",

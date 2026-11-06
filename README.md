@@ -6,7 +6,7 @@ Open-source app for recording teacher availability, validating rules by contract
 
 - Next.js 16
 - React 19
-- Clerk
+- Microservicio de Autenticación Institucional (LDAP / av-auth-microservice)
 - Neon Postgres
 - shadcn/ui
 - Tailwind CSS 4
@@ -19,7 +19,7 @@ Open-source app for recording teacher availability, validating rules by contract
 - [docs/data-model.md](docs/data-model.md) - Entity-relationship diagram, table dictionary, and domain invariants.
 - [docs/adr/0001-nextjs-fullstack.md](docs/adr/0001-nextjs-fullstack.md) - Why Next.js full-stack instead of a separate backend.
 - [docs/adr/0002-postgres-raw-sql.md](docs/adr/0002-postgres-raw-sql.md) - Why raw parameterized SQL instead of an ORM.
-- [docs/adr/0003-clerk-roles.md](docs/adr/0003-clerk-roles.md) - Why Clerk as identity provider with roles in metadata.
+- [docs/adr/0004-institutional-ldap-auth.md](docs/adr/0004-institutional-ldap-auth.md) - Institutional LDAP authentication via Next.js BFF.
 
 ## Development
 
@@ -90,34 +90,31 @@ Without `--apply`, the importer only validates. With `--replace-teachers`, it re
 
 ## Roles
 
-Effective roles come from `public_metadata.role` in Clerk and are mirrored in `app_users`:
+Los roles efectivos se determinan a partir de los roles institucionales asignados en `av-auth-microservice` para el sistema `HORARIOS_FISI` y se sincronizan en `app_users`:
 
-- `docente`: registers their own availability and courses only.
-- `direccion`: reserved for schedule review.
-- `admin`: can access Direction, Users, Audit, and Settings.
+- `docente`: asignado desde el rol institucional `DOCENTE`. Registra su propia disponibilidad y cursos.
+- `direccion`: asignado desde `DIRECTOR_ESCUELA` o `DEPARTAMENTO`. Permite la revisión y aprobación de horarios.
+- `admin`: asignado desde `ADMIN`. Acceso total a Dirección, Usuarios, Auditoría y Configuración.
 
-To promote admins and reset the rest to `docente`:
-
-```bash
-bun run clerk:set-admins -- --admin-email raillyhugo@gmail.com --admin-email hpaucar@unmsm.edu.pe
-```
+Los roles institucionales se administran centralizadamente en el microservicio de autenticación institucional.
 
 ## Features
 
-- Email authentication with Clerk.
-- Teacher onboarding. Administrative roles from Clerk metadata.
-- Per-teacher availability registration.
-- Rule validation for full-time, 20-hour part-time, and 10-hour part-time contracts.
-- School and course catalog editable from Admin.
-- Catalog search and filters by course, school, and status.
-- Direction view for reviewing teachers.
-- Administrative search and filters by teacher, email, and status.
-- User, role, and school management from Admin.
-- User filters by role and onboarding status.
-- Schedule approval and academic period open/close.
-- Administrative observations with event history.
-- Searchable institutional audit log exportable to CSV.
-- Availability export to PDF and Excel.
+- Autenticación institucional con credenciales LDAP UNMSM (`@unmsm.edu.pe`).
+- Sincronización Just-In-Time (JIT) de usuarios y perfiles docentes al iniciar sesión.
+- Sesiones cifradas seguras gestionadas por Next.js BFF con renovación proactiva de tokens.
+- Registro de disponibilidad docente por bloques horarios.
+- Validación de reglas por tipo de contrato (tiempo completo, tiempo parcial 20h y 10h).
+- Catálogo de escuelas y cursos editable desde Administración.
+- Búsqueda y filtros de cursos por escuela y estado.
+- Vista de Dirección para revisión de disponibilidad docente.
+- Búsqueda administrativa y filtros por docente, correo y estado.
+- Gestión de usuarios y escuelas desde Administración.
+- Filtros de usuarios por rol y estado de inducción.
+- Cierre y apertura de periodo académico con congelación de disponibilidad.
+- Observaciones administrativas e historial de eventos.
+- Registro de auditoría institucional con exportación a CSV.
+- Exportación de disponibilidad horaria a PDF y Excel.
 
 ## License
 

@@ -1,14 +1,12 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { SignedOutShell } from "@/components/schedule-app";
+import { resolveScheduleIdentity } from "@/lib/auth/schedule-identity";
 
 export default async function Home() {
-  const { userId } = await auth();
-  if (userId) {
-    const user = await currentUser();
+  const identity = await resolveScheduleIdentity();
+  if (identity && !identity.preview) {
     redirect(
-      user?.publicMetadata?.role === "admin" ||
-        user?.publicMetadata?.role === "direccion"
+      identity.role === "admin" || identity.role === "direccion"
         ? "/direction"
         : "/teacher",
     );

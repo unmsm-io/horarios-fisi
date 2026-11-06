@@ -14,8 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEXT_TELEMETRY_DISABLED: "1"
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ci
-      CLERK_SECRET_KEY: sk_test_ci
+      AUTH_SERVICE_URL: http://localhost:5000
+      AUTH_SYSTEM_CODE: HORARIOS_FISI
+      AUTH_SESSION_SECRET: test_ci_auth_session_secret_fisi_32_chars
       DIRECTION_ACCESS_CODE: ci-direction-code
       DIRECTION_EMAIL_ALLOWLIST: direccion@unmsm.edu.pe
     steps:

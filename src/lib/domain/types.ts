@@ -11,12 +11,15 @@ export type Onboarding = {
 };
 
 export type ScheduleIdentity = {
-  clerkUserId: string;
+  ldapUid: string;
   email: string;
   imageUrl?: string;
   name: string;
   preview?: boolean;
   role?: AppRole;
+  institutionalRoles?: string[];
+  /** @deprecated use ldapUid */
+  clerkUserId?: string;
 };
 
 export type ScheduleSettings = {
@@ -36,11 +39,13 @@ export type ScheduleEvent = {
 };
 
 export type ScheduleUser = {
-  clerkUserId: string;
+  ldapUid: string;
   email: string;
   imageUrl?: string;
   name: string;
   role: AppRole;
+  institutionalRoles?: string[];
+  accountStatus?: string;
   school: string;
   onboardingComplete: boolean;
   lastSeenAt?: string;
@@ -50,6 +55,8 @@ export type ScheduleUser = {
   teacherStatus: TeacherProfile["status"] | null;
   updatedAt: string;
   createdAt: string;
+  /** @deprecated use ldapUid */
+  clerkUserId?: string;
 };
 
 export type SchedulePayload = {
@@ -69,13 +76,23 @@ export type SchedulePayload = {
   userName: string;
 };
 
-export type ClerkUserSyncInput = {
-  clerkUserId: string;
+export type InstitutionalUserSyncInput = {
+  ldapUid?: string;
   email: string;
-  imageUrl?: string;
   name: string;
+  imageUrl?: string;
   role?: AppRole;
+  institutionalRoles?: string[];
+  accountStatus?: string;
+  authUserId?: number;
+  authAccountId?: number;
+  code?: string;
+  school?: string;
+  /** @deprecated use ldapUid */
+  clerkUserId?: string;
 };
+
+export type ClerkUserSyncInput = InstitutionalUserSyncInput;
 
 export type TeacherCourseImportResponse = Omit<
   TeacherCourseImportResult,

@@ -57,8 +57,10 @@ export async function resetDb(sql: NeonQueryFunction<false, false>) {
 export function makeIdentity(
   overrides: Partial<ScheduleIdentity> & { role?: AppRole } = {},
 ): ScheduleIdentity {
+  const uid = overrides.ldapUid || overrides.clerkUserId || "test-user-001";
   return {
-    clerkUserId: "test-user-001",
+    ldapUid: uid,
+    clerkUserId: uid,
     email: "test@unmsm.edu.pe",
     name: "Test User",
     preview: false,

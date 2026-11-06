@@ -1,6 +1,5 @@
 "use client";
 
-import { SignInButton, SignOutButton, UserButton } from "@clerk/nextjs";
 import {
   AlertCircle,
   ArrowDownToLine,
@@ -12,9 +11,9 @@ import {
   Files,
   GraduationCap,
   History,
-  Home,
   Info,
   LockKeyhole,
+  LogOut,
   Moon,
   Plus,
   Save,
@@ -55,6 +54,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Empty,
   EmptyContent,
@@ -423,7 +430,7 @@ export function ScheduleApp({
   const canUseAdmin = data.canUseAdmin;
   const canUseDirection = data.canUseDirection;
   const teacherMode = data.teacherMode;
-  const showClerkControls = !preview;
+  const canSignOut = !preview;
   const approvedCount = data.teachers.filter(
     (teacher) => teacher.status === "aprobado",
   ).length;
@@ -976,7 +983,7 @@ export function ScheduleApp({
   return (
     <ScheduleFrame
       academicTerm={academicTerm}
-      canSignOut={showClerkControls}
+      canSignOut={canSignOut}
       canUseAdmin={canUseAdmin}
       canUseDirection={canUseDirection}
       completion={sidebarCompletion}
@@ -1162,6 +1169,75 @@ export function OnboardingRouteApp({
   );
 }
 
+function InstitutionalUserButton({
+  name,
+  role,
+}: {
+  name: string;
+  role: string;
+}) {
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const initials = useMemo(() => {
+    if (!name.trim()) return "U";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }, [name]);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Ignorar errores de red para asegurar la redirección
+    } finally {
+      window.location.href = "/sign-in";
+    }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative size-8 rounded-full border border-border"
+          aria-label="Perfil y opciones de cuenta"
+          disabled={loggingOut}
+        >
+          <Avatar className="size-8">
+            <AvatarFallback className="bg-primary/10 text-primary font-semibold text-xs">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="font-normal">
+          <div className="flex flex-col space-y-1">
+            <p className="truncate text-sm font-medium leading-none text-foreground">
+              {name || "Usuario institucional"}
+            </p>
+            <p className="truncate text-xs leading-none text-muted-foreground">
+              {role}
+            </p>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          onClick={handleLogout}
+          className="cursor-pointer gap-2"
+        >
+          <LogOut className="size-4" />
+          <span>Cerrar sesión</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function ScheduleFrame({
   academicTerm,
   canSignOut,
@@ -1239,7 +1315,12 @@ function ScheduleFrame({
                 {roleLabel(currentRole)}
               </Badge>
               <ThemeToggle />
-              {canSignOut ? <UserButton /> : null}
+              {canSignOut ? (
+                <InstitutionalUserButton
+                  name={userName}
+                  role={roleLabel(currentRole)}
+                />
+              ) : null}
             </div>
           </header>
           <div className="min-h-0 flex-1 overflow-hidden bg-background">
@@ -1396,17 +1477,22 @@ function AppSidebar({
       </SidebarContent>
       {canSignOut ? (
         <SidebarFooter className="border-sidebar-border border-t p-3">
-          <SignOutButton>
-            <Button
-              variant="outline"
-              className="w-full border-sidebar-border bg-transparent text-sidebar-foreground group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:px-0"
-            >
-              <span className="group-data-[collapsible=icon]:hidden">
-                Cerrar sesión
-              </span>
-              <Home className="hidden group-data-[collapsible=icon]:block" />
-            </Button>
-          </SignOutButton>
+          <Button
+            variant="outline"
+            className="w-full border-sidebar-border bg-transparent text-sidebar-foreground group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:px-0"
+            onClick={async () => {
+              try {
+                await fetch("/api/auth/logout", { method: "POST" });
+              } finally {
+                window.location.href = "/sign-in";
+              }
+            }}
+          >
+            <span className="group-data-[collapsible=icon]:hidden">
+              Cerrar sesión
+            </span>
+            <LogOut className="hidden group-data-[collapsible=icon]:block size-4" />
+          </Button>
         </SidebarFooter>
       ) : null}
     </>
@@ -2805,9 +2891,11 @@ function UsersAccessTable({
         </TableHeader>
         <TableBody>
           {users.map((user) => {
-            const isSelf = user.clerkUserId === currentUserId;
+            const isSelf =
+              user.ldapUid === currentUserId ||
+              user.clerkUserId === currentUserId;
             return (
-              <TableRow className="h-12" key={user.clerkUserId}>
+              <TableRow className="h-12" key={user.ldapUid}>
                 <TableCell className="px-2 py-1">
                   <div className="flex min-w-0 items-center gap-2">
                     <Avatar size="sm">
@@ -2850,7 +2938,7 @@ function UsersAccessTable({
                     value={user.role}
                     onValueChange={(role) =>
                       onSetUserAccess(
-                        user.clerkUserId,
+                        user.ldapUid,
                         role as AppRole,
                         user.school,
                       )
@@ -2874,7 +2962,7 @@ function UsersAccessTable({
                     disabled={saving}
                     value={user.school}
                     onValueChange={(department) =>
-                      onSetUserAccess(user.clerkUserId, user.role, department)
+                      onSetUserAccess(user.ldapUid, user.role, department)
                     }
                   >
                     <SelectTrigger className="w-full" size="sm">
@@ -5344,12 +5432,13 @@ export function SignedOutShell() {
                 de horarios.
               </p>
             </div>
-            <SignInButton mode="modal">
-              <Button className="h-11 w-full">
-                <GraduationCap data-icon="inline-start" />
-                Ingresar con mi cuenta
-              </Button>
-            </SignInButton>
+            <Link
+              href="/sign-in"
+              className={cn(buttonVariants(), "h-11 w-full")}
+            >
+              <GraduationCap data-icon="inline-start" />
+              Ingresar con mi cuenta
+            </Link>
             <p className="border-t pt-3 text-muted-foreground text-xs leading-5">
               Si tu correo no está habilitado, comunícate con Dirección
               Académica FISI.
