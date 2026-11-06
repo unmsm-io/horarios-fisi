@@ -1,0 +1,539 @@
+openapi: 3.1.0
+info:
+  title: Microservicio de Autenticación Institucional FISI - UNMSM
+  description: |
+    API REST para la autenticación centralizada de usuarios institucionales de la Facultad de Ingeniería de Sistemas e Informática (UNMSM).
+
+    ### Características Principales:
+    - **Autenticación Híbrida**: Valida credenciales corporativas contra un servidor de directorio LDAP institucional y resuelve autorizaciones, cuentas activas y roles asignados por sistema en una base de datos relacional PostgreSQL.
+    - **Enfoque No-SSO con Audiencia Específica**: Los tokens JWT generados están estrictamente acotados al sistema solicitado mediante el claim estándar `aud` (ej. `AULA_VIRTUAL`), prescindiendo de un claim redundante `systemCode`.
+    - **Ciclo de Vida de Tokens**: Emite Access Tokens de corta duración (15 min) y Refresh Tokens de larga duración (7 días) firmados con HMAC-SHA256, con soporte para revocación.
+    - **Estandarización de Respuestas**: Todas las respuestas siguen contratos JSON predecibles (`ApiResponse` para operaciones exitosas y `ErrorResponse` con desglose de campos `details` para fallos y validaciones).
+  version: 1.0.0
+  contact:
+    name: Soporte Técnico FISI
+    email: aulavirtual.fisi@unmsm.edu.pe
+  license:
+    name: Privativa - UNMSM
+
+servers:
+  - url: http://localhost:5000
+    description: Servidor de Desarrollo Local
+  - url: https://aulavirtualsistemas.unmsm.edu.pe
+    description: Servidor de Producción
+
+tags:
+  - name: Autenticación
+    description: Endpoints para inicio de sesión institucional y renovación de tokens JWT
+
+paths:
+  /api/v1/auth/login:
+    post:
+      tags:
+        - Autenticación
+      summary: Inicio de sesión institucional
+      description: |
+        Autentica a un usuario institucional validando su contraseña contra el directorio LDAP.
+        Si las credenciales son válidas, verifica en PostgreSQL que el usuario posea una cuenta institucional activa
+        y al menos un rol asignado para el `systemCode` solicitado.
+        En caso afirmativo, genera un par de tokens JWT (Access y Refresh) con audiencia específica para dicho sistema.
+      operationId: login
+      requestBody:
+        required: true
+        description: Credenciales del usuario institucional y código del sistema al que desea acceder.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            examples:
+              loginDocente:
+                summary: Ejemplo de inicio de sesión de Docente
+                value:
+                  username: "lmotaa"
+                  password: "password123"
+                  systemCode: "AULA_VIRTUAL"
+      responses:
+        "200":
+          description: Autenticación completada exitosamente. Retorna tokens JWT y perfil del usuario, además de emitir la cookie HttpOnly con el Refresh Token.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Strict; Max-Age=604800"
+              description: Cookie HttpOnly con el Refresh Token para almacenamiento seguro en el navegador.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginSuccessResponse"
+              examples:
+                exitoDocente:
+                  summary: Respuesta exitosa de autenticación
+                  value:
+                    success: true
+                    message: "Autenticación exitosa"
+                    data:
+                      accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      refreshToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      tokenType: "Bearer"
+                      expiresIn: 900
+                      user:
+                        id: 1
+                        code: "20200001"
+                        firstName: "LAZARO FLORIAN"
+                        lastName: "MOTA ALVA"
+                        email: "lmotaa@unmsm.edu.pe"
+                        ldapUid: "lmotaa"
+                        roles:
+                          - "DOCENTE"
+                        systemCode: "AULA_VIRTUAL"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/auth/refresh:
+    post:
+      tags:
+        - Autenticación
+      summary: Renovación de Access Token
+      description: |
+        Emite un nuevo Access Token a partir de un Refresh Token válido, no expirado y no revocado.
+        Acepta el token prioritariamente desde la cookie HttpOnly `refreshToken`, o alternativamente desde el cuerpo JSON.
+        La audiencia (`aud`) del nuevo token mantiene el mismo código de sistema registrado originalmente
+        en el refresh token, validando que el usuario conserve roles activos para dicho sistema.
+      operationId: refreshToken
+      parameters:
+        - in: cookie
+          name: refreshToken
+          required: false
+          schema:
+            type: string
+          description: Refresh token transmitido automáticamente en la cookie HttpOnly.
+      requestBody:
+        required: false
+        description: Refresh Token en formato JWT emitido previamente por el servicio (opcional si se envía por cookie).
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRefreshRequest"
+            examples:
+              renovacionToken:
+                summary: Ejemplo de solicitud de renovación
+                value:
+                  refreshToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        "200":
+          description: Token renovado exitosamente. Retorna nuevo Access Token y renueva la cookie.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Strict; Max-Age=604800"
+              description: Cookie HttpOnly actualizada con el Refresh Token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenRefreshSuccessResponse"
+              examples:
+                exitoRenovacion:
+                  summary: Respuesta exitosa de renovación
+                  value:
+                    success: true
+                    message: "Token renovado exitosamente"
+                    data:
+                      accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      tokenType: "Bearer"
+                      expiresIn: 900
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedTokenError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - Autenticación
+      summary: Cierre de sesión institucional y limpieza de cookies
+      description: |
+        Invalida el Refresh Token en el servicio de revocación y emite una cabecera `Set-Cookie` con `Max-Age=0`
+        para eliminar la cookie del navegador. Si se proporciona el token de acceso en la cabecera `Authorization`,
+        también lo revoca.
+      operationId: logout
+      parameters:
+        - in: cookie
+          name: refreshToken
+          required: false
+          schema:
+            type: string
+          description: Cookie que transporta el Refresh Token a revocar.
+      requestBody:
+        required: false
+        description: Refresh token opcional en cuerpo JSON como alternativa a la cookie.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRefreshRequest"
+      responses:
+        "200":
+          description: Sesión cerrada exitosamente y cookie eliminada del cliente.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "refreshToken=; Path=/api/v1/auth; Max-Age=0; HttpOnly; SameSite=Strict"
+              description: Cabecera que destruye la cookie en el cliente.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutSuccessResponse"
+              examples:
+                exitoLogout:
+                  summary: Respuesta exitosa de cierre de sesión
+                  value:
+                    success: true
+                    message: "Sesión cerrada exitosamente"
+                    data: null
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Token JWT de acceso proporcionado en el encabezado `Authorization: Bearer <token>`.
+        Claims del payload:
+        - `sub`: Identificador de usuario institucional (`ldap_uid`)
+        - `iss`: Identificador del emisor (`av-auth-microservice`)
+        - `aud`: Código del sistema específico autenticado (enfoque no-SSO, ej. `AULA_VIRTUAL`)
+        - `accountId`: ID de la cuenta institucional en PostgreSQL
+        - `email`: Correo institucional
+        - `fullName`: Nombres y apellidos completos
+        - `roles`: Lista de roles asignados en el sistema (ej. `["DOCENTE"]`)
+        - `type`: Tipo de token (`ACCESS`)
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: refreshToken
+      description: |
+        Cookie HttpOnly que transporta el Refresh Token (`refreshToken`).
+        Configurada con flags `HttpOnly; SameSite=Strict; Path=/api/v1/auth` y `Secure` según el perfil activo.
+
+  responses:
+    BadRequestError:
+      description: Error de validación en los campos enviados en la solicitud.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            validacionFallida:
+              summary: Error de validación de campos
+              value:
+                success: false
+                statusCode: 400
+                error: "Bad Request"
+                message: "Los datos enviados contienen errores de validación"
+                timestamp: "2026-11-03T16:00:00.000Z"
+                path: "/api/v1/auth/login"
+                details:
+                  - field: "username"
+                    message: "El nombre de usuario o uid es requerido"
+                  - field: "password"
+                    message: "La contraseña es requerida"
+                  - field: "systemCode"
+                    message: "El código del sistema es requerido"
+
+    UnauthorizedError:
+      description: Credenciales incorrectas contra el servidor LDAP.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            credencialesInvalidas:
+              summary: Credenciales inválidas
+              value:
+                success: false
+                statusCode: 401
+                error: "Unauthorized"
+                message: "Credenciales inválidas"
+                timestamp: "2026-11-03T16:00:00.000Z"
+                path: "/api/v1/auth/login"
+
+    UnauthorizedTokenError:
+      description: Refresh token inválido, expirado, manipulado o revocado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            tokenInvalido:
+              summary: Token expirado o inválido
+              value:
+                success: false
+                statusCode: 401
+                error: "Unauthorized"
+                message: "Refresh token inválido o expirado"
+                timestamp: "2026-11-03T16:00:00.000Z"
+                path: "/api/v1/auth/refresh"
+
+    ForbiddenError:
+      description: Usuario válido en LDAP pero sin cuenta institucional activa o sin roles en el sistema solicitado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            usuarioNoRegistrado:
+              summary: Usuario no registrado en el sistema
+              value:
+                success: false
+                statusCode: 403
+                error: "Forbidden"
+                message: "El usuario cnavarrod no se encuentra registrado en el sistema, contacte a soporte"
+                timestamp: "2026-11-03T16:00:00.000Z"
+                path: "/api/v1/auth/login"
+
+    InternalServerError:
+      description: Error inesperado en el servidor.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            errorInterno:
+              summary: Error interno 500
+              value:
+                success: false
+                statusCode: 500
+                error: "Internal Server Error"
+                message: "Ocurrió un error interno en el servidor"
+                timestamp: "2026-11-03T16:00:00.000Z"
+                path: "/api/v1/auth/login"
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+        - systemCode
+      properties:
+        username:
+          type: string
+          description: Identificador UID institucional del usuario (ej. cuenta LDAP institucional).
+          example: "lmotaa"
+        password:
+          type: string
+          format: password
+          description: Contraseña institucional del usuario.
+          example: "password123"
+        systemCode:
+          type: string
+          description: Código identificador del sistema al que el usuario desea acceder.
+          example: "AULA_VIRTUAL"
+
+    TokenRefreshRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          description: Refresh Token JWT vigente emitido en el inicio de sesión.
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    UserDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Identificador único del usuario en PostgreSQL.
+          example: 1
+        code:
+          type: string
+          description: Código institucional único del usuario (código de alumno/docente).
+          example: "20200001"
+        firstName:
+          type: string
+          description: Nombres del usuario.
+          example: "LAZARO FLORIAN"
+        lastName:
+          type: string
+          description: Apellidos del usuario.
+          example: "MOTA ALVA"
+        email:
+          type: string
+          format: email
+          description: Correo electrónico institucional.
+          example: "lmotaa@unmsm.edu.pe"
+        ldapUid:
+          type: string
+          description: UID institucional registrado en LDAP.
+          example: "lmotaa"
+        roles:
+          type: array
+          description: Lista de roles que el usuario ostenta en el sistema autenticado.
+          items:
+            type: string
+          example: ["DOCENTE"]
+        systemCode:
+          type: string
+          description: Código del sistema autenticado.
+          example: "AULA_VIRTUAL"
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: JWT Access Token de corta duración (15 minutos).
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refreshToken:
+          type: string
+          description: JWT Refresh Token de larga duración (7 días).
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        tokenType:
+          type: string
+          description: Tipo de esquema de autorización.
+          example: "Bearer"
+        expiresIn:
+          type: integer
+          format: int64
+          description: Tiempo de expiración del Access Token en segundos.
+          example: 900
+        user:
+          $ref: "#/components/schemas/UserDto"
+
+    TokenRefreshResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: Nuevo JWT Access Token generado.
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        tokenType:
+          type: string
+          description: Tipo de esquema de autorización.
+          example: "Bearer"
+        expiresIn:
+          type: integer
+          format: int64
+          description: Tiempo de expiración del nuevo Access Token en segundos.
+          example: 900
+
+    LoginSuccessResponse:
+      type: object
+      required:
+        - success
+        - message
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Autenticación exitosa"
+        data:
+          $ref: "#/components/schemas/AuthResponse"
+
+    TokenRefreshSuccessResponse:
+      type: object
+      required:
+        - success
+        - message
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Token renovado exitosamente"
+        data:
+          $ref: "#/components/schemas/TokenRefreshResponse"
+
+    LogoutSuccessResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Sesión cerrada exitosamente"
+        data:
+          type: "null"
+          nullable: true
+          example: null
+
+    ValidationErrorDetail:
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+          description: Nombre del campo que no superó la validación.
+          example: "username"
+        message:
+          type: string
+          description: Causa o regla de validación violada.
+          example: "El nombre de usuario o uid es requerido"
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - statusCode
+        - error
+        - message
+        - timestamp
+        - path
+      properties:
+        success:
+          type: boolean
+          example: false
+        statusCode:
+          type: integer
+          description: Código de estado HTTP.
+          example: 400
+        error:
+          type: string
+          description: Frase o descripción del estado HTTP.
+          example: "Bad Request"
+        message:
+          type: string
+          description: Mensaje descriptivo del motivo del error.
+          example: "Los datos enviados contienen errores de validación"
+        timestamp:
+          type: string
+          format: date-time
+          description: Marca de tiempo ISO-8601 en la que se produjo el error.
+          example: "2026-11-03T16:00:00.000Z"
+        path:
+          type: string
+          description: URI del endpoint invocado.
+          example: "/api/v1/auth/login"
+        details:
+          type: array
+          description: Desglose de errores de validación de campos individuales (opcional).
+          items:
+            $ref: "#/components/schemas/ValidationErrorDetail"

@@ -1,4 +1,7 @@
-# ADR 0003: Clerk as identity provider with roles in metadata
+# ADR 0003: Clerk as identity provider with roles in metadata (SUPERSEDED)
+
+> [!NOTE]
+> This decision has been superseded by [ADR 0004: Institutional LDAP Authentication via Microservice and Next.js BFF](./0004-institutional-ldap-auth.md).
 
 ## Context
 
